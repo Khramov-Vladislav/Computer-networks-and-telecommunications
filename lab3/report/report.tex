@@ -1,0 +1,393 @@
+\documentclass[a4paper,14pt]{extarticle}
+\usepackage{cmap}
+\usepackage[T2A]{fontenc}
+\usepackage[utf8]{inputenc}
+\usepackage[russian]{babel}
+\usepackage[left=30mm,right=15mm,top=20mm,bottom=23mm]{geometry}
+\usepackage{indentfirst}
+\usepackage{setspace}
+\usepackage{booktabs,tabularx}
+\usepackage{caption,listings}
+\usepackage{tikz}
+\usepackage[hidelinks,unicode]{hyperref}
+
+\setstretch{1.30}
+\setlength{\parindent}{1.25cm}
+\setlength{\emergencystretch}{1em}
+\pagestyle{plain}
+\captionsetup{font=small,labelsep=endash}
+\captionsetup[table]{position=top}
+\renewcommand{\lstlistingname}{Листинг}
+\lstset{
+  basicstyle=\ttfamily\small,
+  numbers=left,
+  numberstyle=\scriptsize\color{black!55},
+  xleftmargin=1.5em,
+  frame=single,
+  rulecolor=\color{black!30},
+  captionpos=b,
+  columns=fullflexible,
+  keepspaces=true,
+  breaklines=true,
+  showstringspaces=false
+}
+\hypersetup{
+  pdftitle={Лабораторная работа № 3. Маршрутизация в GNS3},
+  pdfauthor={Храмов В. Д.},
+  pdfsubject={Сети ЭВМ и телекоммуникации компьютерных сетей. Вариант 22}
+}
+
+\begin{document}
+
+\begin{titlepage}
+  \thispagestyle{empty}
+  \begin{center}
+    \begin{singlespace}
+      МИНИСТЕРСТВО НАУКИ И ВЫСШЕГО ОБРАЗОВАНИЯ\\
+      РОССИЙСКОЙ ФЕДЕРАЦИИ\par\medskip
+      Санкт-Петербургский политехнический университет Петра Великого\par\medskip
+      Институт компьютерных наук и кибербезопасности\\
+      Высшая школа технологий искусственного интеллекта\\
+      Направление 02.03.01 «Математика и компьютерные науки»
+    \end{singlespace}
+
+    \vfill
+    {\Large\bfseries Отчёт о выполнении\\лабораторной работы №~3\par}
+    \medskip
+    {\large Динамическая маршрутизация в GNS3\par}
+    \medskip
+    Дисциплина «Сети ЭВМ и телекоммуникации компьютерных сетей»\par
+    Вариант 22\par
+  \end{center}
+
+  \vfill
+  \noindent Выполнил студент группы 5130201/40101\hfill
+  \underline{\hspace{2.3cm}}\enspace Храмов В.~Д.\par\medskip
+  \noindent Проверил, к.\,т.\,н.\hfill
+  \underline{\hspace{2.3cm}}\enspace Мулюха В.~А.\par\medskip
+  \begin{flushright}
+    «\underline{\hspace{0.9cm}}» \underline{\hspace{2.6cm}} 2026 г.
+  \end{flushright}
+
+  \vfill
+  \begin{center}
+    Санкт-Петербург\\2026
+  \end{center}
+\end{titlepage}
+
+\setcounter{page}{2}
+\tableofcontents
+\clearpage
+
+\section{Цель и постановка задачи}
+
+Цель работы --- построить сеть по схеме варианта~22 в GNS3, разработать план
+IP-адресации с использованием как минимум трёх разных масок и проверить
+связность конечных и промежуточных узлов. При отключении одной из ветвей
+трафик должен проходить по оставшемуся пути после автоматического
+пересчёта маршрутов.
+
+На рисунке~\ref{fig:topology} показана реализованная топология. Хосты S1--S3
+подключены к отдельным интерфейсам R1, а хосты K1--K3 подключены к R3
+через коммутатор SW. Между R1 и R3 построено два пути.
+
+\begin{figure}[htbp]
+  \centering
+  \begin{tikzpicture}[
+    x=1.37cm,y=1.00cm,
+    every node/.style={font=\small},
+    router/.style={circle,draw,thick,minimum size=9mm,inner sep=0pt},
+    host/.style={rectangle,draw,minimum width=10mm,minimum height=7mm},
+    switch/.style={rectangle,draw,very thick,minimum width=11mm,minimum height=7mm},
+    local/.style={draw=black!60},
+    primary/.style={draw=blue!60!black,very thick},
+    backup/.style={draw=blue!60!black,thick,dashed}
+  ]
+    \node[router] (r1) at (1.35,0) {R1};
+    \node[router] (r2) at (3.10,0) {R2};
+    \node[router] (r3) at (4.85,0) {R3};
+    \node[router] (r4) at (1.35,1.65) {R4};
+    \node[router] (r5) at (3.10,1.65) {R5};
+    \node[router] (r6) at (4.85,1.65) {R6};
+    \node[host] (s1) at (0,1) {S1};
+    \node[host] (s2) at (0,0) {S2};
+    \node[host] (s3) at (0,-1) {S3};
+    \node[switch] (sw) at (6.30,0) {SW};
+    \node[host] (k1) at (7.65,1) {K1};
+    \node[host] (k2) at (7.65,0) {K2};
+    \node[host] (k3) at (7.65,-1) {K3};
+
+    \draw[primary] (r1) -- (r2) -- (r3);
+    \draw[backup] (r1) -- (r4) -- (r5) -- (r6) -- (r3);
+    \draw[local] (s1) -- (r1) (s2) -- (r1) (s3) -- (r1);
+    \draw[local] (r3) -- (sw) (sw) -- (k1) (sw) -- (k2) (sw) -- (k3);
+  \end{tikzpicture}
+  \caption{Схема сети варианта 22. Пунктиром показана резервная ветвь}
+  \label{fig:topology}
+\end{figure}
+
+\section{Теоретические сведения}
+
+OSPFv2 распространяет сведения о состоянии каналов внутри области и
+вычисляет пути с минимальной суммарной стоимостью исходящих
+интерфейсов. После изменения топологии OSPF обновляет базу данных
+состояния каналов и пересчитывает таблицу маршрутизации~\cite{rfc2328}.
+На каналах между маршрутизаторами используется режим
+\texttt{point-to-point}. Интерфейсы, ведущие к хостам, настроены как
+пассивные. Их сети объявляются в OSPF, а соседства на этих интерфейсах
+не формируются~\cite{cisco-ospf}.
+
+\clearpage
+\section{Реализация}
+
+\subsection{Оборудование и план адресации}
+
+Использованы шесть Cisco~3745 с IOS~12.4(25) в Dynamips, шесть узлов
+VPCS и встроенный Ethernet Switch GNS3. Cisco~3745 располагает двумя
+встроенными Fast Ethernet и поддерживает дополнительные сетевые
+модули~\cite{gns3-ios}. На R1 установлены три модуля NM-1FE-TX для хостов
+S1--S3. На R3 один такой модуль соединяет маршрутизатор с SW. Порт
+Ethernet0 коммутатора подключён к R3, Ethernet1--Ethernet3 --- к K1--K3
+соответственно. Все четыре порта работают в режиме access в VLAN~1.
+
+План адресации использует пять масок. В таблице~\ref{tab:lan} указаны
+четыре сети конечных узлов. Шлюз каждого хоста --- адрес интерфейса
+маршрутизатора в его локальной сети.
+
+\begin{table}[htbp]
+  \centering\small
+  \caption{Локальные сети и адреса конечных узлов}
+  \label{tab:lan}
+  \begin{tabularx}{\linewidth}{@{}llXX@{}}
+    \toprule
+    Подсеть & Интерфейс & Шлюз & Адреса хостов \\
+    \midrule
+    192.168.22.0/24  & R1 Fa1/0 & 192.168.22.1  & S1 192.168.22.2 \\
+    192.168.23.0/26  & R1 Fa2/0 & 192.168.23.1  & S2 192.168.23.2 \\
+    192.168.23.64/27 & R1 Fa3/0 & 192.168.23.65 & S3 192.168.23.66 \\
+    192.168.24.0/28  & R3 Fa1/0 & 192.168.24.1  & K1 192.168.24.2 \\
+                     &          &               & K2 192.168.24.3 \\
+                     &          &               & K3 192.168.24.4 \\
+    \bottomrule
+  \end{tabularx}
+\end{table}
+
+Межмаршрутизаторные каналы перечислены в таблице~\ref{tab:transit}.
+Маска /30 выделяет два адреса узлов на каждом канале.
+
+\begin{table}[htbp]
+  \centering\small
+  \caption{Адреса межмаршрутизаторных каналов}
+  \label{tab:transit}
+  \begin{tabularx}{\linewidth}{@{}lXX@{}}
+    \toprule
+    Подсеть & Первый интерфейс & Второй интерфейс \\
+    \midrule
+    10.22.0.0/30  & R1 Fa0/0 --- 10.22.0.1  & R2 Fa0/0 --- 10.22.0.2 \\
+    10.22.0.4/30  & R2 Fa0/1 --- 10.22.0.5  & R3 Fa0/0 --- 10.22.0.6 \\
+    10.22.0.8/30  & R1 Fa0/1 --- 10.22.0.9  & R4 Fa0/0 --- 10.22.0.10 \\
+    10.22.0.12/30 & R4 Fa0/1 --- 10.22.0.13 & R5 Fa0/0 --- 10.22.0.14 \\
+    10.22.0.16/30 & R5 Fa0/1 --- 10.22.0.17 & R6 Fa0/0 --- 10.22.0.18 \\
+    10.22.0.20/30 & R6 Fa0/1 --- 10.22.0.21 & R3 Fa0/1 --- 10.22.0.22 \\
+    \bottomrule
+  \end{tabularx}
+\end{table}
+
+\clearpage
+\subsection{Настройка OSPF}
+
+На R1--R6 запущен процесс OSPF~1 в области~0. Идентификатор
+маршрутизатора R\(i\) задан в виде \(i.i.i.i\), где \(i\) --- номер
+маршрутизатора от 1 до 6. Команда \texttt{passive-interface default}
+отключает формирование соседств на всех интерфейсах по умолчанию.
+Соседства разрешены только на транзитных каналах. На них интервал
+Hello установлен равным 1~с, а Dead --- 4~с. Значения совпадают на обоих
+концах каждого канала.
+
+Стоимость интерфейса явно задана равной 10. До сети 192.168.24.0/28
+из R1 стоимость основного пути составляет \(2\cdot10+10=30\), а
+резервного --- \(4\cdot10+10=50\). Последнее слагаемое в обоих
+случаях соответствует интерфейсу R3 в сети K1--K3. При доступности
+обеих ветвей OSPF выбирает путь через R2.
+
+В листинге~\ref{lst:r1} приведён фрагмент стартовой конфигурации R1.
+Команды \texttt{network} используют точное совпадение с адресом
+интерфейса. OSPF объявляет соответствующую подключённую подсеть с
+её фактической маской.
+
+{\singlespacing
+\begin{lstlisting}[caption={Фрагмент конфигурации OSPF на R1},label={lst:r1}]
+router ospf 1
+ router-id 1.1.1.1
+ log-adjacency-changes
+ passive-interface default
+ no passive-interface FastEthernet0/0
+ network 10.22.0.1 0.0.0.0 area 0
+ no passive-interface FastEthernet0/1
+ network 10.22.0.9 0.0.0.0 area 0
+ network 192.168.22.1 0.0.0.0 area 0
+ network 192.168.23.1 0.0.0.0 area 0
+ network 192.168.23.65 0.0.0.0 area 0
+!
+interface FastEthernet0/0
+ ip address 10.22.0.1 255.255.255.252
+ ip ospf cost 10
+ ip ospf network point-to-point
+ ip ospf hello-interval 1
+ ip ospf dead-interval 4
+ duplex auto
+ speed auto
+ no shutdown
+\end{lstlisting}
+}
+
+\clearpage
+\section{Проверка работы сети}
+
+\subsection{Штатный режим}
+
+Для проверки использованы GNS3 2.2.61, Dynamips 0.2.23 и
+VPCS 0.8.3. Эксперимент проведён 22~ноября 2026~г. Архив проекта
+включает конфигурации узлов и образ IOS из материалов к заданию.
+Проверки выполнены после загрузки
+узлов и формирования соседств OSPF. В каждой серии \texttt{ping} отправлялось по пять запросов ICMP Echo Request.
+
+Команда \texttt{show ip ospf neighbor} показала по два соседства
+в состоянии \texttt{FULL} на каждом маршрутизаторе. В
+листинге~\ref{lst:neighbors} приведён вывод на R1. Сосед R2 находится
+на основной ветви, а R4 --- на резервной.
+
+{\singlespacing
+\begin{lstlisting}[caption={Соседства OSPF на R1},label={lst:neighbors},basicstyle=\ttfamily\footnotesize]
+R1#show ip ospf neighbor
+Neighbor ID     Pri   State           Dead Time   Address         Interface
+4.4.4.4           0   FULL/  -        00:00:03    10.22.0.10      FastEthernet0/1
+2.2.2.2           0   FULL/  -        00:00:03    10.22.0.2       FastEthernet0/0
+\end{lstlisting}
+}
+
+В таблице~\ref{tab:ping} приведены проверки всех шести хостов и
+промежуточных маршрутизаторов R2, R4, R5 и R6. Через R1 и R3
+проходил сквозной трафик, что подтвердили трассировка и таблицы
+маршрутизации. В таблице приведены итоговые серии. При первом обмене S1--K1 получено 4/5 ответов, при повторе --- 5/5.
+
+\begin{table}[htbp]
+  \centering\small
+  \caption{Результаты ping в штатном режиме}
+  \label{tab:ping}
+  \begin{tabularx}{\linewidth}{@{}lXr@{}}
+    \toprule
+    Источник & Получатель & Ответы / запросы \\
+    \midrule
+    S1 & K1 (192.168.24.2) & 5/5 \\
+    S2 & K2 (192.168.24.3) & 5/5 \\
+    S3 & K3 (192.168.24.4) & 5/5 \\
+    K1 & S1 (192.168.22.2) & 5/5 \\
+    R2 & R3 Fa0/0 (10.22.0.6) & 5/5 \\
+    R4 & R5 Fa0/0 (10.22.0.14) & 5/5 \\
+    R5 & R6 Fa0/0 (10.22.0.18) & 5/5 \\
+    R6 & R3 Fa0/1 (10.22.0.22) & 5/5 \\
+    \bottomrule
+  \end{tabularx}
+\end{table}
+
+\clearpage
+\subsection{Отключение ветвей}
+
+При остановке R5 соседства с ним исчезли на R4 и R6. Путь через R2
+сохранился. После запуска R5 и восстановления соседств был остановлен
+R2. OSPF автоматически перенаправил трафик с R1 через R4, а обратный
+трафик с R3 --- через R6. После запуска R2 вернулся путь с меньшей
+стоимостью.
+
+\begin{table}[htbp]
+  \centering\small
+  \caption{Маршрут R1 к сети K1--K3 и доступность K1 с S1}
+  \label{tab:failover}
+  \begin{tabularx}{\linewidth}{@{}Xlrr@{}}
+    \toprule
+    Состояние & Следующий узел & Метрика & Ответы / запросы \\
+    \midrule
+    Все узлы запущены   & R2 (10.22.0.2)  & 30 & 5/5 \\
+    R5 остановлен       & R2 (10.22.0.2)  & 30 & 5/5 \\
+    R2 остановлен       & R4 (10.22.0.10) & 50 & 5/5 \\
+    R2 снова запущен    & R2 (10.22.0.2)  & 30 & 5/5 \\
+    \bottomrule
+  \end{tabularx}
+\end{table}
+
+В таблице~\ref{tab:failover} приведены результаты после сходимости
+OSPF. При остановленном R2 доля ответов составила 5/5 для S2--K2,
+5/5 для S3--K3 и 5/5 для K1--S1. После запуска
+R2 первая серия S1--K1 дала 2/5 ответов. В повторной серии
+получены все пять ответов. Длительность перерыва отдельно не измерялась.
+
+В листинге~\ref{lst:trace} приведены строки таблицы R1 и переходы
+трассировки S1--K1. При остановке R2 число маршрутизаторов на пути
+увеличилось с трёх до пяти.
+
+{\singlespacing
+\begin{lstlisting}[caption={Маршрут R1 и переходы трассировки до и после остановки R2},label={lst:trace},basicstyle=\ttfamily\footnotesize]
+R1#show ip route 192.168.24.0
+O       192.168.24.0 [110/30] via 10.22.0.2, 00:00:00, FastEthernet0/0
+S1> trace 192.168.24.2
+1  192.168.22.1
+2  10.22.0.2
+3  10.22.0.6
+4  192.168.24.2
+
+R1#show ip route 192.168.24.0
+O       192.168.24.0 [110/50] via 10.22.0.10, 00:00:00, FastEthernet0/1
+S1> trace 192.168.24.2
+1  192.168.22.1
+2  10.22.0.10
+3  10.22.0.14
+4  10.22.0.18
+5  10.22.0.22
+6  192.168.24.2
+\end{lstlisting}
+}
+
+\clearpage
+\subsection{Порядок демонстрации}
+
+\begin{enumerate}
+  \item Открыть меню \texttt{File}, выбрать \texttt{Import portable project}
+    и указать файл \path{Lab3.gns3project}. Запустить все узлы.
+  \item На R1 и R3 выполнить \texttt{show ip ospf neighbor}. На R1
+    вывести \texttt{show ip route 192.168.24.0}, на R3 ---
+    \texttt{show ip route 192.168.22.0}. На S1 выполнить
+    \texttt{ping 192.168.24.2 -c 5} и \texttt{trace 192.168.24.2}.
+  \item Остановить R5 командой \texttt{Stop} из контекстного меню
+    узла. Повторить \texttt{ping} и показать, что путь идёт через R2.
+  \item Запустить R5 и дождаться двух соседств \texttt{FULL} на нём.
+    Остановить R2, проверить смену маршрутов и повторить \texttt{ping}
+    и \texttt{trace} с S1.
+  \item Запустить R2 и показать возврат маршрута через него.
+\end{enumerate}
+
+\section{Заключение}
+
+В GNS3 реализована схема варианта~22 с шестью маршрутизаторами,
+одним коммутатором и шестью конечными узлами. В плане адресации
+использовано пять длин префикса. Проверки подтвердили доступность
+хостов и промежуточных узлов. Остановка R5 оставила доступным путь
+через R2, а остановка R2 вызвала автоматическое переключение на
+R4--R5--R6. После восстановления R2 снова был выбран
+маршрут с меньшей метрикой.
+
+\phantomsection
+\addcontentsline{toc}{section}{Список литературы}
+{\singlespacing\small
+\begin{thebibliography}{9}
+  \setlength{\itemsep}{0.25em}
+  \bibitem{rfc2328}
+    Moy J. \href{https://www.rfc-editor.org/rfc/rfc2328}{OSPF Version 2. RFC 2328.} 1998.
+  \bibitem{cisco-ospf}
+    Cisco. \href{https://www.cisco.com/c/en/us/td/docs/ios-xml/ios/iproute_ospf/command/iro-cr-book/ospf-a1.html}{OSPF Commands. Cisco IOS IP Routing Command Reference}.
+  \bibitem{gns3-ios}
+    GNS3. \href{https://docs.gns3.com/docs/emulators/cisco-ios-images-for-dynamips}{Cisco IOS images for Dynamips}.
+\end{thebibliography}
+}
+
+\end{document}
