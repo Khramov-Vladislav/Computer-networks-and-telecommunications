@@ -1,0 +1,16 @@
+# Промежуточные файлы LaTeX
+*.aux
+*.log
+*.out
+*.toc
+*.fls
+*.fdb_latexmk
+*.synctex.gz
+*.xdv
+*.bbl
+*.blg
+
+# Резервные копии и журналы GNS3/Dynamips
+*.gns3.backup
+*_i[0-9]*_log.txt
+*_i[0-9]*_stdout.txt
